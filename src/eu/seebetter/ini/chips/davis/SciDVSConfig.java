@@ -101,9 +101,9 @@ public class SciDVSConfig extends DavisConfig implements DavisDisplayConfigInter
 		SciDVSConfig.addAIPot(ipots, this, "ColSelLowBn,20,n,normal,Column arbiter request pull-down");
 		SciDVSConfig.addAIPot(ipots, this, "DACBufBp,21,p,normal,Row request pull up");
 		SciDVSConfig.addAIPot(ipots, this, "ReadoutBufBP,22,p,normal,APS readout OTA follower bias");
-		SciDVSConfig.addAIPot(ipots, this, "AEPdBn,23,n,normal,Request encoder pulldown static current");
-		SciDVSConfig.addAIPot(ipots, this, "AEPuXBp,24,p,normal,AER column pullup");
-		SciDVSConfig.addAIPot(ipots, this, "AEPuYBp,25,p,normal,AER row pullup");
+		SciDVSConfig.addAIPot(ipots, this, "AEPuYBp,23,p,normal,AER column pullup");
+		SciDVSConfig.addAIPot(ipots, this, "AEPdYBn,24,n,normal,Request encoder pulldown static current");
+		SciDVSConfig.addAIPot(ipots, this, "AEPuXBp,25,p,normal,AER row pullup");
 
 
         pr = SciDVSConfig.addAIPot(ipots, this, "PrBp,30,p,normal,Photoreceptor bias current");

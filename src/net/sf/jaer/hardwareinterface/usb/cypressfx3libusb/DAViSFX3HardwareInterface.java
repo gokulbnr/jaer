@@ -45,8 +45,13 @@ public class DAViSFX3HardwareInterface extends CypressFX3Biasgen {
 	static public final short PID_FX2 = (short) 0x841B;
 	static public final int REQUIRED_FIRMWARE_VERSION_FX3 = 6;
 	static public final int REQUIRED_FIRMWARE_VERSION_FX2 = 4;
-	static public final int REQUIRED_LOGIC_REVISION_FX3 = 18;
+	//static public final int REQUIRED_LOGIC_REVISION_FX3 = 18;
+	static public final int REQUIRED_LOGIC_REVISION_FX3 = 9912;
 	static public final int REQUIRED_LOGIC_REVISION_FX2 = 18;
+
+	static public final int GAER_GROUPADDR_WIDTH = 5;
+	static public final int GAER_ADDRY_WIDTH = 7;
+	static public final int GAER_EVENT_WIDTH = 4;
 
 	private boolean updatedRealClockValues = false;
 	public float logicClockFreq = 90.0f;
@@ -166,6 +171,9 @@ public class DAViSFX3HardwareInterface extends CypressFX3Biasgen {
 		private int imuCount;
 		private byte imuTmpData;
 
+        private boolean DEBUGUSB = false;
+        //private boolean DEBUGUSB = true;
+
 		public RetinaAEReader(final CypressFX3 cypress) throws HardwareInterfaceException {
 			super(cypress);
 
@@ -196,8 +204,10 @@ public class DAViSFX3HardwareInterface extends CypressFX3Biasgen {
 			apsFlipX = (chipAPSStreamStart & 0x02) != 0;
 			apsFlipY = (chipAPSStreamStart & 0x01) != 0;
 
-			dvsSizeX = spiConfigReceive(CypressFX3.FPGA_DVS, (short) 0);
-			dvsSizeY = spiConfigReceive(CypressFX3.FPGA_DVS, (short) 1);
+			//dvsSizeX = spiConfigReceive(CypressFX3.FPGA_DVS, (short) 0);
+			//dvsSizeY = spiConfigReceive(CypressFX3.FPGA_DVS, (short) 1);
+			dvsSizeY = 128;
+			dvsSizeX = 126;
 
 			dvsInvertXY = (spiConfigReceive(CypressFX3.FPGA_DVS, (short) 2) & 0x04) != 0;
 
@@ -216,8 +226,7 @@ public class DAViSFX3HardwareInterface extends CypressFX3Biasgen {
                         }
 		}
 
-		private void initFrame() {
-			apsCurrentReadoutType = RetinaAEReader.APS_READOUT_RESET;
+		private void initFrame() {apsCurrentReadoutType = RetinaAEReader.APS_READOUT_RESET;
 			Arrays.fill(apsCountX, 0, RetinaAEReader.APS_READOUT_TYPES_NUM, (short) 0);
 			Arrays.fill(apsCountY, 0, RetinaAEReader.APS_READOUT_TYPES_NUM, (short) 0);
 		}
@@ -253,6 +262,7 @@ public class DAViSFX3HardwareInterface extends CypressFX3Biasgen {
 
 				for (int i = 0; i < sBuf.limit(); i++) {
 					final short event = sBuf.get(i);
+				    if (DEBUGUSB) CypressFX3.log.info("here in the log received: 0x" + Integer.toHexString(event));
 
 					// Check if timestamp
 					if ((event & 0x8000) != 0) {
@@ -261,6 +271,7 @@ public class DAViSFX3HardwareInterface extends CypressFX3Biasgen {
 						currentTimestamp = wrapAdd + (event & 0x7FFF);
 
 						// Check monotonicity of timestamps.
+				        if (DEBUGUSB) CypressFX3.log.info("it's a timestamp: 0x" + Integer.toHexString(currentTimestamp));
 						checkMonotonicTimestamp();
 					}
 					else {
@@ -271,6 +282,7 @@ public class DAViSFX3HardwareInterface extends CypressFX3Biasgen {
 
 						switch (code) {
 							case 0: // Special event
+				                if (DEBUGUSB) CypressFX3.log.info("it's a special event");
 								switch (data) {
 									case 0: // Ignore this, but log it.
 										CypressFX3.log.severe("Caught special reserved event!");
@@ -415,51 +427,75 @@ public class DAViSFX3HardwareInterface extends CypressFX3Biasgen {
 								}
 
 								dvsLastY = data;
+				                if (DEBUGUSB) CypressFX3.log.info("it's a GAER Y address: 0x" + Integer.toHexString(data) + " (dec: " + data + ")");
 
 								break;
 
-							case 2: // X address, Polarity OFF
+							case 2: // GAER event
 							case 3: // X address, Polarity ON
+						        final byte groupAddr = (byte) ((event & 0x1F00) >>> 8);
+						        final byte onEvents = (byte) ((event & 0x00F0) >>> 4);
+						        final byte offEvents = (byte) (event & 0x000F);
+						        final byte allEvents = (byte) (event & 0x00FF);
+				                if (DEBUGUSB) CypressFX3.log.info("it's a GAER event, group address: 0x" + Integer.toHexString(groupAddr) + " (dec: " + groupAddr + ")" + " OFF events 0x" + Integer.toHexString(onEvents) + " OFF events 0x" + Integer.toHexString(offEvents));
+                                int dvsAddrOffsetX = (int) (groupAddr*4);
+
 								// Check range conformity.
-								if (data >= dvsSizeX) {
-									CypressFX3.log.severe("DVS: X address out of range (0-" + (dvsSizeX - 1) + "): " + data + ".");
+								if (dvsAddrOffsetX >= dvsSizeX) {
+									CypressFX3.log.severe("DVS: X address out of range (0-" + (dvsSizeX - 1) + "): groupAddr: " + groupAddr + ", addrY: " +  + dvsAddrOffsetX + ".");
 									break; // Skip invalid event.
 								}
+                                for(byte iter=0 ; iter < 2*GAER_EVENT_WIDTH; iter++) {
+                                    if((allEvents&(1<<iter)) != 0) {
+                                        byte polarity;
+                                        int addrX;
+                                        if(iter<GAER_EVENT_WIDTH) {
+                                            polarity = 0;
+                                            addrX= (int) (dvsAddrOffsetX+iter);
+                                        }
+                                        else {
+                                            polarity = 1;
+                                            addrX= (int) (dvsAddrOffsetX+iter-GAER_EVENT_WIDTH);
+                                        }
+				                        if (DEBUGUSB) CypressFX3.log.info("Event of polarity " + polarity + ". X address: " + addrX);
+                                            
 
-								// Check that the buffer has space for this event. Enlarge if needed.
-								if (ensureCapacity(buffer, eventCounter + 1)) {
-									// The X address comes out of the new logic such that the (0, 0) address
-									// is, as expected by most, in the lower left corner. Since the DAVIS240
-									// chip class data format assumes that this is still flipped, as in the
-									// old logic, we have to flip it here, so that the chip class extractor
-									// can flip it back. Backwards compatibility with recordings is the main
-									// motivation to do this hack.
-									// NOTE 09.2017: logic now uses upper left (CG format) as output.
+								        // Check that the buffer has space for this event. Enlarge if needed.
+								        if (ensureCapacity(buffer, eventCounter + 1)) {
+								        	// The X address comes out of the new logic such that the (0, 0) address
+								        	// is, as expected by most, in the lower left corner. Since the DAVIS240
+								        	// chip class data format assumes that this is still flipped, as in the
+								        	// old logic, we have to flip it here, so that the chip class extractor
+								        	// can flip it back. Backwards compatibility with recordings is the main
+								        	// motivation to do this hack.
+								        	// NOTE 09.2017: logic now uses upper left (CG format) as output.
 
-									// Invert polarity for PixelParade high gain pixels (DavisSense), because of
-									// negative gain from pre-amplifier.
-                                                                        // tobi commented out because it seems that array is now flipped horizontally (oct 2018)
-//                                                                       final byte polarity =code;
-//									final byte polarity = ((chipID == DAViSFX3HardwareInterface.CHIP_DAVIS208) && (data < 192))
-//										? ((byte) (~code))
-//										: (code);
-									final byte polarity = ((chipID == DAViSFX3HardwareInterface.CHIP_DAVIS208) && (data <= 16))
-										? ((byte) (~code))
-										: (code);
-									if (dvsInvertXY) {
-										buffer
-											.getAddresses()[eventCounter] = (((dvsSizeX - 1 - data) << DavisChip.YSHIFT) & DavisChip.YMASK)
-												| (((dvsSizeY - 1 - dvsLastY) << DavisChip.XSHIFT) & DavisChip.XMASK)
-												| (((polarity & 0x01) << DavisChip.POLSHIFT) & DavisChip.POLMASK);
-									}
-									else {
-										buffer.getAddresses()[eventCounter] = (((dvsSizeY - 1 - dvsLastY) << DavisChip.YSHIFT)
-											& DavisChip.YMASK) | (((dvsSizeX - 1 - data) << DavisChip.XSHIFT) & DavisChip.XMASK)
-											| (((polarity & 0x01) << DavisChip.POLSHIFT) & DavisChip.POLMASK);
-									}
+								        	// Invert polarity for PixelParade high gain pixels (DavisSense), because of
+								        	// negative gain from pre-amplifier.
+                                                                                // tobi commented out because it seems that array is now flipped horizontally (oct 2018)
+//                                                                               final byte polarity =code;
+//								        	final byte polarity = ((chipID == DAViSFX3HardwareInterface.CHIP_DAVIS208) && (data < 192))
+//								        		? ((byte) (~code))
+//								        		: (code);
+								        	//final byte polarity = ((chipID == DAViSFX3HardwareInterface.CHIP_DAVIS208) && (data <= 16))
+								        	//	? ((byte) (~code))
+								        	//	: (code);
+								        	if (dvsInvertXY) {
+								        		buffer
+								        			.getAddresses()[eventCounter] = (((dvsSizeX - 1 - addrX) << DavisChip.YSHIFT) & DavisChip.YMASK)
+								        				| (((dvsSizeY - 1 - dvsLastY) << DavisChip.XSHIFT) & DavisChip.XMASK)
+								        				| (((polarity & 0x01) << DavisChip.POLSHIFT) & DavisChip.POLMASK);
+								        	}
+								        	else {
+								        		buffer.getAddresses()[eventCounter] = (((dvsSizeY - 1 - dvsLastY) << DavisChip.YSHIFT)
+								        			& DavisChip.YMASK) | (((dvsSizeX - 1 - addrX) << DavisChip.XSHIFT) & DavisChip.XMASK)
+								        			| (((polarity & 0x01) << DavisChip.POLSHIFT) & DavisChip.POLMASK);
+								        	}
 
-									buffer.getTimestamps()[eventCounter++] = currentTimestamp;
-								}
+								        	buffer.getTimestamps()[eventCounter++] = currentTimestamp;
+								        }
+                                    }
+                                }
 
 								break;
 

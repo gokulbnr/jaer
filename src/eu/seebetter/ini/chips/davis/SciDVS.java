@@ -8,12 +8,12 @@ import net.sf.jaer.DevelopmentStatus;
 import net.sf.jaer.graphics.DavisRenderer;
 import net.sf.jaer.hardwareinterface.HardwareInterface;
 
-@Description("SciDVS 127x112 pixel with APS-DVS DAVIS sensor")
+@Description("SciDVS 126x112 pixel with APS-DVS DAVIS sensor")
 @DevelopmentStatus(DevelopmentStatus.Status.Experimental)
 public class SciDVS extends DavisBaseCamera {
 
-	public static final short WIDTH_PIXELS = 128;
-	public static final short HEIGHT_PIXELS = 128;
+	public static final short WIDTH_PIXELS = 112;
+	public static final short HEIGHT_PIXELS = 126;
 
 	public SciDVS() {
 		setName("SciDVS");
